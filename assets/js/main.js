@@ -1,17 +1,69 @@
+class Model {
+  constructor(appID = "todoApp") {
+    let caches;
+
+    this.getStorage = () =>
+      caches || JSON.parse(window.localStorage.getItem(appID)) || [];
+
+    this.setStorage = data => {
+      caches = data;
+      window.localStorage.setItem(appID, JSON.stringify(data));
+    };
+  }
+
+  bindTodoListChanged(cb) {
+    this.notify = cb;
+  }
+
+  _commit(todos) {
+    this.setStorage(todos);
+    this.notify(todos);
+  }
+
+  add(task) {
+    const todos = this.getStorage();
+    todos.push(task);
+
+    this._commit(todos);
+  }
+
+  delete(id) {
+    const todos = this.getStorage().filter(item => item.id !== id);
+    this._commit(todos);
+  }
+
+  edit(id, data) {
+    const todos = this.getStorage().map(item =>
+      item.id === id ? Object.assign({}, item, data) : item
+    );
+    this._commit(todos);
+  }
+
+  toggle(id) {
+    const todos = this.getStorage().map(item =>
+      item.id === id
+        ? Object.assign({}, item, { completed: !item.completed })
+        : item
+    );
+    this._commit(todos);
+  }
+  getAll(cb) {
+    cb(this.getStorage());
+  }
+}
+
 class UICreator {
   constructor() {
     this.config = {
-      tag: "div",
       markup: "",
       attrs: {},
       events: {},
-      container: null,
       children: null,
     };
   }
 
-  createUI(opts) {
-    const { tag, attrs, events, markup, container, children } = Object.assign(
+  createUI(tag, opts) {
+    const { attrs, events, markup, children } = Object.assign(
       {},
       this.config,
       opts
@@ -26,15 +78,7 @@ class UICreator {
     });
 
     if (children && Array.isArray(children)) {
-      children.forEach(child => {
-        child.nodeType === 1
-          ? el.append(child)
-          : this.createUI(Object.assign({}, child, { container: el }));
-      });
-    }
-
-    if (container) {
-      container.append(el);
+      children.forEach(child => child.nodeType === 1 && el.append(child));
     }
 
     return el;
@@ -44,27 +88,48 @@ class UICreator {
 class View extends UICreator {
   constructor(selector) {
     super();
+
     this.parentNode = document.querySelector(selector) || document.body;
 
-    this.todoListUI = this.createUI({
-      tag: "ul",
+    this.todoListUI = this.createUI("ul", {
       attrs: { class: "list" },
     });
 
-    this.counterUI = this.createUI({
+    this.counterUI = this.createUI("div", {
       markup: "0 tasks left",
       attrs: { class: "counter" },
     });
 
-    this.formUI = this.createUI({
-      tag: "form",
+    this.filtersUI = this.createUI("ul", {
+      attrs: {
+        class: "filter",
+        id: "filter",
+      },
+      children: [
+        { href: "#", title: "All" },
+        { href: "#active", title: "Active" },
+        { href: "#completed", title: "Completed" },
+      ].map(link =>
+        this.createUI("li", {
+          children: [
+            this.createUI("a", {
+              attrs: {
+                href: link.href,
+                class: `filter__link`,
+              },
+              markup: link.title,
+            }),
+          ],
+        })
+      ),
+    });
+    this.formUI = this.createUI("form", {
       attrs: {
         class: "add-form",
         id: "add-form",
       },
       children: [
-        {
-          tag: "input",
+        this.createUI("input", {
           attrs: {
             name: "title",
             type: "text",
@@ -73,58 +138,32 @@ class View extends UICreator {
             autocomplete: "off",
             placeholder: "What needs to be done?",
           },
-        },
-        {
-          tag: "button",
+        }),
+        this.createUI("button", {
           markup: "Add task",
           attrs: {
             class: "add-form__submit hidden",
           },
-        },
+        }),
       ],
     });
 
-    this.appUI = this.createUI({
-      tag: "section",
+    this.appUI = this.createUI("section", {
       attrs: { class: "app" },
       children: [
-        { tag: "h1", attrs: { class: "app__title" }, markup: "todo app" },
-        {
+        this.createUI("h1", {
+          attrs: { class: "app__title" },
+          markup: "todo app",
+        }),
+        this.createUI("div", {
           attrs: { class: "app__tools" },
-          children: [
-            this.counterUI,
-            {
-              tag: "ul",
-              attrs: {
-                class: "filter",
-                id: "filter",
-              },
-              children: [
-                { href: "#", title: "All" },
-                { href: "#active", title: "Active" },
-                { href: "#completed", title: "Completed" },
-              ].map(item => ({
-                tag: "li",
-                children: [
-                  {
-                    tag: "a",
-                    attrs: {
-                      href: item.href,
-                      class: "filter__link",
-                    },
-                    markup: item.title,
-                  },
-                ],
-              })),
-            },
-          ],
-        },
+          children: [this.counterUI, this.filtersUI],
+        }),
         this.formUI,
-        {
-          tag: "main",
+        this.createUI("main", {
           attrs: { class: "app__content" },
           children: [this.todoListUI],
-        },
+        }),
       ],
     });
   }
@@ -141,7 +180,13 @@ class View extends UICreator {
     };
   }
 
-  handleFormSubmit(cb) {
+  bindTaskEdit(cb) {
+    this.handleTaskEdit = (id, data) => {
+      cb(id, data);
+    };
+  }
+
+  bindFormSubmit(cb) {
     this.formUI.addEventListener("submit", event => {
       event.preventDefault();
 
@@ -158,22 +203,39 @@ class View extends UICreator {
     });
   }
 
+  updateActiveFilter() {
+    [].forEach.call(this.filtersUI.children, el => {
+      el.children[0].classList.remove("filter__link--active");
+      el.children[0].hash === location.hash &&
+        el.children[0].classList.add("filter__link--active");
+    });
+  }
+
   updateTodoList(todos = []) {
+    while (this.todoListUI.firstChild) {
+      this.todoListUI.removeChild(this.todoListUI.firstChild);
+    }
+
+    if (todos.length === 0) {
+      this.todoListUI.append(
+        this.createUI("div", {
+          markup: "You dont have any todos yet. Add one?",
+        })
+      );
+      return;
+    }
+
     const list = todos.map(todo => {
-      return this.createUI({
-        tag: "li",
+      return this.createUI("li", {
         attrs: { class: "list__item" },
         children: [
-          {
+          this.createUI("div", {
             attrs: {
-              class: ["task", todo.completed ? "task--completed" : ""].join(
-                " "
-              ),
+              class: `task ${todo.completed ? "task--completed" : ""}`,
               ["data-id"]: todo.id,
             },
             children: [
-              {
-                tag: "input",
+              this.createUI("input", {
                 attrs: {
                   type: "checkbox",
                   class: "task__checkbox",
@@ -182,25 +244,36 @@ class View extends UICreator {
                 events: {
                   change: () => this.handleTaskComplete(todo.id),
                 },
-              },
-              { attrs: { class: "task__title" }, markup: todo.title },
-              {
-                tag: "button",
+              }),
+              this.createUI("div", {
+                attrs: { class: "task__title", contenteditable: true },
+                markup: todo.title,
+                events: {
+                  keydown: e => {
+                    e.keyCode === 27 && e.target.blur();
+
+                    e.keyCode === 13 &&
+                      this.handleTaskEdit(todo.id, {
+                        title: e.target.innerText.trim(),
+                      });
+                  },
+                  focusout: e => {
+                    e.target.innerText = todo.title;
+                  },
+                },
+              }),
+              this.createUI("button", {
                 attrs: { class: "task__destroy" },
                 markup: "delete",
                 events: {
                   click: () => this.handleTaskDelete(todo.id),
                 },
-              },
+              }),
             ],
-          },
+          }),
         ],
       });
     });
-
-    while (this.todoListUI.firstChild) {
-      this.todoListUI.removeChild(this.todoListUI.firstChild);
-    }
 
     this.todoListUI.append(...list);
   }
@@ -215,71 +288,38 @@ class View extends UICreator {
   }
 }
 
-class Model {
-  constructor(name = "todo-app") {
-    let caches;
-
-    this.getStorage = () =>
-      caches || JSON.parse(window.localStorage.getItem(name)) || [];
-
-    this.setStorage = data => {
-      caches = data;
-      window.localStorage.setItem(name, JSON.stringify(data));
-    };
-  }
-
-  onTodoListChanged(cb) {
-    this.notify = cb;
-  }
-
-  add(task) {
-    const todos = this.getStorage();
-    todos.push(task);
-
-    this.setStorage(todos);
-    this.notify(todos);
-  }
-  delete(id) {
-    const todos = this.getStorage().filter(item => item.id !== id);
-    this.setStorage(todos);
-    this.notify(todos);
-  }
-
-  edit(id, data) {
-    this.items = this.items.map(item =>
-      item.id === id ? Object.assign({}, item, data) : item
-    );
-  }
-  toggle(id) {
-    const todos = this.getStorage().map(item =>
-      item.id === id
-        ? Object.assign({}, item, { completed: !item.completed })
-        : item
-    );
-    this.setStorage(todos);
-    this.notify(todos);
-  }
-  find(cb) {
-    const todos = this.getStorage();
-    cb(todos);
-  }
-}
-
 class TodoApp {
   constructor(opts) {
     this.view = new View(opts.el);
-    this.model = new Model();
+    this.model = new Model(opts.appID);
 
-    this.model.find(todos => {
-      this.view.updateTodoList(todos);
-      this.view.updateCounter(todos.filter(item => !item.completed).length);
+    this.model.bindTodoListChanged(todos => this.updateViewComponents(todos));
+    this.model.getAll(todos => {
+      this.updateViewComponents(todos);
+      this.view.updateActiveFilter();
     });
   }
 
+  updateViewComponents(todos) {
+    this.view.updateTodoList(
+      todos.filter(item => {
+        switch (location.hash) {
+          case "#active":
+            return !item.completed;
+          case "#completed":
+            return item.completed;
+          default:
+            return true;
+        }
+      })
+    );
+    this.view.updateCounter(todos.filter(item => !item.completed).length);
+  }
+
   bindListeners() {
-    this.view.handleFormSubmit(data => {
+    this.view.bindFormSubmit(data => {
       const task = {
-        id: Math.floor(Math.PI * Date.now()),
+        id: Math.floor(Math.random() * Date.now()),
         completed: false,
         title: data.title,
       };
@@ -295,18 +335,24 @@ class TodoApp {
       this.model.toggle(id);
     });
 
-    this.model.onTodoListChanged(todos => {
-      this.view.updateTodoList(todos);
-      this.view.updateCounter(todos.filter(item => !item.completed).length);
+    this.view.bindTaskEdit((id, data) => {
+      this.model.edit(id, data);
     });
   }
 
   init() {
     this.view.initUI();
     this.bindListeners();
+    window.addEventListener("hashchange", () => {
+      this.model.getAll(todos => {
+        this.updateViewComponents(todos);
+        this.view.updateActiveFilter();
+      });
+    });
   }
 }
 
 new TodoApp({
   el: "#root",
+  appID: "hohoho",
 }).init();
