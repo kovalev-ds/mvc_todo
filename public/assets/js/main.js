@@ -1,5 +1,5 @@
 class Model {
-  constructor(appID = "todoApp") {
+  constructor(appID = "app") {
     let caches;
 
     this.getStorage = () =>
@@ -15,57 +15,57 @@ class Model {
     this.notify = cb;
   }
 
-  _commit(todos) {
-    this.setStorage(todos);
-    this.notify(todos);
+  _commit(data) {
+    this.setStorage(data);
+    this.notify(data);
   }
 
-  add(task) {
-    const todos = this.getStorage();
-    todos.push(task);
+  add(item) {
+    const data = this.getStorage();
+    todos.push(item);
 
-    this._commit(todos);
+    this._commit(data);
   }
 
   delete(id) {
-    const todos = this.getStorage().filter(item => item.id !== id);
-    this._commit(todos);
+    const data = this.getStorage().filter(item => item.id !== id);
+    this._commit(data);
   }
 
-  edit(id, data) {
-    const todos = this.getStorage().map(item =>
-      item.id === id ? Object.assign({}, item, data) : item
+  edit(id, payload) {
+    const data = this.getStorage().map(item =>
+      item.id === id ? Object.assign({}, item, payload) : item
     );
-    this._commit(todos);
+    this._commit(data);
   }
 
   toggle(id) {
-    const todos = this.getStorage().map(item =>
+    const data = this.getStorage().map(item =>
       item.id === id
         ? Object.assign({}, item, { completed: !item.completed })
         : item
     );
-    this._commit(todos);
+    this._commit(data);
   }
+
   getAll(cb) {
     cb(this.getStorage());
   }
 }
 
-class UICreator {
-  constructor() {
-    this.config = {
-      markup: "",
-      attrs: {},
-      events: {},
-      children: null,
-    };
-  }
+// simple class to create DOM Elements
+class UI {
+  static config = {
+    markup: "",
+    attrs: {},
+    events: {},
+    children: null,
+  };
 
-  createUI(tag, opts) {
+  static create(tag, opts) {
     const { attrs, events, markup, children } = Object.assign(
       {},
-      this.config,
+      UI.config,
       opts
     );
 
@@ -85,34 +85,31 @@ class UICreator {
   }
 }
 
-class View extends UICreator {
+class View {
   constructor(selector) {
-    super();
-
     this.parentNode = document.querySelector(selector) || document.body;
 
-    this.todoListUI = this.createUI("ul", {
+    this.todoListUI = UI.create("ul", {
       attrs: { class: "list" },
     });
 
-    this.counterUI = this.createUI("div", {
+    this.counterUI = UI.create("div", {
       markup: "0 tasks left",
       attrs: { class: "counter" },
     });
 
-    this.filtersUI = this.createUI("ul", {
+    this.filtersUI = UI.create("ul", {
       attrs: {
         class: "filter",
-        id: "filter",
       },
       children: [
         { href: "#", title: "All" },
         { href: "#active", title: "Active" },
         { href: "#completed", title: "Completed" },
       ].map(link =>
-        this.createUI("li", {
+        UI.create("li", {
           children: [
-            this.createUI("a", {
+            UI.create("a", {
               attrs: {
                 href: link.href,
                 class: `filter__link`,
@@ -123,13 +120,15 @@ class View extends UICreator {
         })
       ),
     });
-    this.formUI = this.createUI("form", {
+    this.formUI = UI.create("form", {
       attrs: {
         class: "add-form",
-        id: "add-form",
+      },
+      events: {
+        keydown: e => e.keyCode === 27 && e.currentTarget.reset(),
       },
       children: [
-        this.createUI("input", {
+        UI.create("input", {
           attrs: {
             name: "title",
             type: "text",
@@ -139,28 +138,29 @@ class View extends UICreator {
             placeholder: "What needs to be done?",
           },
         }),
-        this.createUI("button", {
+        UI.create("button", {
           markup: "Add task",
           attrs: {
             class: "add-form__submit hidden",
+            type: "submit",
           },
         }),
       ],
     });
 
-    this.appUI = this.createUI("section", {
+    this.appUI = UI.create("section", {
       attrs: { class: "app" },
       children: [
-        this.createUI("h1", {
+        UI.create("h1", {
           attrs: { class: "app__title" },
           markup: "todo app",
         }),
-        this.createUI("div", {
+        UI.create("div", {
           attrs: { class: "app__tools" },
           children: [this.counterUI, this.filtersUI],
         }),
         this.formUI,
-        this.createUI("main", {
+        UI.create("main", {
           attrs: { class: "app__content" },
           children: [this.todoListUI],
         }),
@@ -190,6 +190,7 @@ class View extends UICreator {
     this.formUI.addEventListener("submit", event => {
       event.preventDefault();
 
+      // form control must have [name] attr.
       const data = [...new FormData(event.currentTarget)].reduce(
         (obj, [key, val]) => {
           obj[key] = val;
@@ -218,24 +219,26 @@ class View extends UICreator {
 
     if (todos.length === 0) {
       this.todoListUI.append(
-        this.createUI("div", {
-          markup: "You dont have any todos yet. Add one?",
+        UI.create("div", {
+          attrs: {
+            class: "not-found",
+          },
+          markup: "Not found a task.",
         })
       );
       return;
     }
 
     const list = todos.map(todo => {
-      return this.createUI("li", {
+      return UI.create("li", {
         attrs: { class: "list__item" },
         children: [
-          this.createUI("div", {
+          UI.create("div", {
             attrs: {
               class: `task ${todo.completed ? "task--completed" : ""}`,
-              ["data-id"]: todo.id,
             },
             children: [
-              this.createUI("input", {
+              UI.create("input", {
                 attrs: {
                   type: "checkbox",
                   class: "task__checkbox",
@@ -245,7 +248,7 @@ class View extends UICreator {
                   change: () => this.handleTaskComplete(todo.id),
                 },
               }),
-              this.createUI("div", {
+              UI.create("div", {
                 attrs: { class: "task__title", contenteditable: true },
                 markup: todo.title,
                 events: {
@@ -262,9 +265,9 @@ class View extends UICreator {
                   },
                 },
               }),
-              this.createUI("button", {
+              UI.create("button", {
                 attrs: { class: "task__destroy" },
-                markup: "delete",
+                markup: "&times;",
                 events: {
                   click: () => this.handleTaskDelete(todo.id),
                 },
@@ -292,31 +295,10 @@ class TodoApp {
   constructor(opts) {
     this.view = new View(opts.el);
     this.model = new Model(opts.appID);
-
-    this.model.bindTodoListChanged(todos => this.updateViewComponents(todos));
-    this.model.getAll(todos => {
-      this.updateViewComponents(todos);
-      this.view.updateActiveFilter();
-    });
   }
 
-  updateViewComponents(todos) {
-    this.view.updateTodoList(
-      todos.filter(item => {
-        switch (location.hash) {
-          case "#active":
-            return !item.completed;
-          case "#completed":
-            return item.completed;
-          default:
-            return true;
-        }
-      })
-    );
-    this.view.updateCounter(todos.filter(item => !item.completed).length);
-  }
-
-  bindListeners() {
+  init() {
+    this.view.initUI();
     this.view.bindFormSubmit(data => {
       const task = {
         id: Math.floor(Math.random() * Date.now()),
@@ -327,32 +309,40 @@ class TodoApp {
       this.model.add(task);
     });
 
-    this.view.bindTaskDelete(id => {
-      this.model.delete(id);
+    this.view.bindTaskDelete(id => this.model.delete(id));
+    this.view.bindTaskComplete(id => this.model.toggle(id));
+    this.view.bindTaskEdit((id, data) => this.model.edit(id, data));
+
+    this.model.bindTodoListChanged(todos => {
+      this.view.updateTodoList(todos.filter(item => filterByHash(item)));
+      this.view.updateCounter(todos.filter(item => !item.completed).length);
     });
 
-    this.view.bindTaskComplete(id => {
-      this.model.toggle(id);
+    this.model.getAll(todos => {
+      this.view.updateActiveFilter();
+      this.view.updateTodoList(todos.filter(item => filterByHash(item)));
+      this.view.updateCounter(todos.filter(item => !item.completed).length);
     });
 
-    this.view.bindTaskEdit((id, data) => {
-      this.model.edit(id, data);
-    });
-  }
-
-  init() {
-    this.view.initUI();
-    this.bindListeners();
     window.addEventListener("hashchange", () => {
       this.model.getAll(todos => {
-        this.updateViewComponents(todos);
+        this.view.updateTodoList(todos.filter(item => filterByHash(item)));
         this.view.updateActiveFilter();
       });
     });
   }
 }
 
+// utils
+
+const filterByHash = item => {
+  const { hash } = location;
+  if (hash === "#active") return !item.completed;
+  if (hash === "#completed") return item.completed;
+  return true;
+};
+
 new TodoApp({
+  appID: "todo",
   el: "#root",
-  appID: "hohoho",
 }).init();
