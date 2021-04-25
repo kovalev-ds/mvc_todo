@@ -22,7 +22,7 @@ class Model {
 
   add(item) {
     const data = this.getStorage();
-    todos.push(item);
+    data.push(item);
 
     this._commit(data);
   }
