@@ -13,6 +13,13 @@ a {
   color: inherit;
 }
 
+#root {
+  display: flex;
+  > * {
+    flex: 0 1 100%;
+  }
+}
+
 .app {
   font-family: "Lato", sans-serif;
   max-width: 25rem;
@@ -48,13 +55,16 @@ a {
 }
 .filter {
   display: inline-flex;
-  &__link {
+  &__button {
+    background-color: transparent;
+    border: none;
     display: block;
     font-size: 0.875rem;
     text-transform: capitalize;
     margin-left: 0.25rem;
     padding: 0.25rem 0.5rem;
     transition: all 0.3s ease;
+    cursor: pointer;
     &--active,
     &:hover {
       background-color: rgba(65, 68, 58, 0.5);
