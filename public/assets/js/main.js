@@ -308,9 +308,11 @@ class View {
 
 class TodoApp {
   constructor(opts) {
-    this.view = new View(opts.el);
-    this.model = new Model(opts.appID);
+    this.view = new View(opts.container);
+    this.model = new Model(opts.id);
     this.filterMode = "all";
+
+    TodoApp.count++;
   }
 
   _filter(filter, item) {
@@ -370,12 +372,15 @@ class TodoApp {
   }
 }
 
-new TodoApp({
-  appID: "first",
-  el: "#root",
-}).init();
+TodoApp.count = 0;
 
-new TodoApp({
-  appID: "second",
-  el: "#root",
-}).init();
+const createTodoApp = opts => {
+  const { id, container } = opts;
+  if (TodoApp.count >= 10000)
+    throw new Error("You cant create more than 10000 instances");
+
+  return new TodoApp({ id, container });
+};
+
+createTodoApp({ id: "first", container: "#root" }).init();
+createTodoApp({ id: "second", container: "#root" }).init();
